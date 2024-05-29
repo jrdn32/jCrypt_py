@@ -19,10 +19,10 @@ def sub_word(word):
 
 # the AES key expansion algorithm
 def gen_key_schedule(sym_key, key_bitlen) -> np.array:
-    N = key_bitlen//32    # number of 32-bit words in key
-    R = 7 + N            # number of round keys needed
-    W = np.empty((4*R), dtype=np.uint32)
-    K = np.empty((N), dtype=np.uint32)
+    N = key_bitlen//32                    # number of 32-bit words in key
+    R = 7 + N                             # number of round keys needed
+    W = np.empty((4*R), dtype=np.uint32)  # the round keys
+    K = np.empty((N), dtype=np.uint32)    # 32-bit words of sym_key
     key_mask = 0xFFFFFFFF
     for k in range(0, N): K[len(K) - k - 1] = (sym_key >> (k * 32)) & key_mask
 
