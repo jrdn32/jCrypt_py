@@ -7,7 +7,8 @@ class jCrypt:
         if (algorithm.upper() != "AES"):
             raise Exception("The specified algorithm is not supported yet")
         # Only AES-128, AES-196, and AES-256 are allowed
-        if (sym_key.len() != 32 and sym_key.len() != 48 and sym_key.len() != 64):
+        key_bitlen = sym_key.len() * 4
+        if (key_bitlen != 128 and key_bitlen != 192 and key_bitlen != 256):
             raise Exception("The length of the given key is not supported")
 
         self.algorithm = algorithm

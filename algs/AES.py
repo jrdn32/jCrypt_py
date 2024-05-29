@@ -1,5 +1,41 @@
 import numpy as np
 
+# one byte left circular shift
+def rot_word(word):
+    return (word << 8) | (word >> 24) & 0xFFFFFFFF
+
+# apply AES sbox to each byte of the word
+def sub_word(word):
+    sub1_index = (word >> 24) & 0xFF
+    sub2_index = (word >> 16) & 0xFF
+    sub3_index = (word >> 8)  & 0xFF
+    sub4_index = word & 0xFF
+    sub1 = sbox[sub1_index >> 4][sub1_index & 0xF] << 24
+    sub2 = sbox[sub2_index >> 4][sub2_index & 0xF] << 16
+    sub3 = sbox[sub3_index >> 4][sub3_index & 0xF] << 8
+    sub4 = sbox[sub4_index >> 4][sub4_index & 0xF]
+
+    return sub1 + sub2 + sub3 + sub4
+
+# the AES key expansion algorithm
+def gen_key_schedule(sym_key, key_bitlen) -> np.array:
+    N = key_bitlen//32    # number of 32-bit words in key
+    R = 7 + N            # number of round keys needed
+    W = np.empty((4*R), dtype=np.uint32)
+    K = np.empty((N), dtype=np.uint32)
+    key_mask = 0xFFFFFFFF
+    for k in range(0, N): K[len(K) - k - 1] = (sym_key >> (k * 32)) & key_mask
+
+    # apply the key expansion algorithm
+    for i in range(0, 4*R):
+        if (i < N):                           W[i] = K[i]
+        elif (i >= N and i%N == 0):           W[i] = W[i-N] ^ sub_word(rot_word(W[i-1])) ^ rcon[i//N - 1]
+        elif (i >= N and N > 6 and i%N == 4): W[i] = W[i-N] ^ sub_word(W[i-1])
+        else:                                 W[i] = W[i-N] ^ W[i-1]
+
+    return W
+
+
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
                      [0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0],
                      [0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15],
@@ -34,4 +70,16 @@ inv_sbox = np.array([[0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40
                      [0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D, 0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 0xEF],
                      [0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0, 0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 0x61],
                      [0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D]]
+                    )
+
+rcon     = np.array([0x01000000,   # rcon_1
+                     0x02000000,   # rcon_2
+                     0x04000000,   # rcon_3
+                     0x08000000,   # rcon_4
+                     0x10000000,   # rcon_5
+                     0x20000000,   # rcon_6
+                     0x40000000,   # rcon_7
+                     0x80000000,   # rcon_8
+                     0x1B000000,   # rcon_9
+                     0x36000000]   # rcon_10
                     )
