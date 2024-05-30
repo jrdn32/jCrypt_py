@@ -34,7 +34,15 @@ def gen_key_schedule(sym_key, key_bitlen) -> np.array:
         elif (i >= N and N > 6 and i%N == 4): W[i] = W[i-N] ^ sub_word(W[i-1])
         else:                                 W[i] = W[i-N] ^ W[i-1]
 
-        round_keys[i//4][i%4] = W[i]
+        round_keys[i//4][i%4] = 0
+
+
+    for i in range(len(round_keys)):
+        key_mask = 0xFF000000
+        for j in range(4):
+            for k in range(4):
+                round_keys[i][k] ^= (W[i*4 + j] & key_mask) >> (j * 8)
+                W[i*4 + j] <<= 8
 
     return round_keys
 
@@ -98,6 +106,44 @@ def add_round_key(state, round_key):
 def encrypt_round(state, round_keys):
     return add_round_key(mix_columns(shift_rows(sub_bytes(state))), round_keys)
 
+
+# perform AES encryption for one block of plaintext
+def encrypt_block(plaintext, sym_key, sym_key_bitlen):
+    # generate the round keys for each round
+    round_keys = gen_key_schedule(sym_key, sym_key_bitlen)
+
+    # transform plaintext into a state array
+    state = np.zeros((4), dtype=np.uint32)
+    state_mask = 0xFF
+    for i in range(4):
+        for j in reversed(range(4)):
+            state[j] ^= (plaintext & state_mask)
+            plaintext >>= 8
+        plaintext <<= 8
+        state_mask <<= 8
+
+    # add initial round key
+    state = add_round_key(state, round_keys[0])
+
+    
+
+    # perform round encryptions
+    for i in range(1, len(round_keys) - 1):
+        state = encrypt_round(state, round_keys[i])
+
+    # perform last round encryption (no mix columns)
+    state = add_round_key(shift_rows(sub_bytes(state)), round_keys[len(round_keys) - 1])
+
+    # transform the state matrix into the ciphertext
+    ciphertext = 0x100000000000000000000000000000000 # for some reason python truncates to 64-bit int without this
+    cipher_mask = 0xFF000000
+    for i in range(4):
+        for j in range(4):
+            ciphertext <<= 8
+            ciphertext ^= (state[j] & cipher_mask) >> ((3-i)*8)
+        cipher_mask >>= 8
+
+    return ciphertext & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF # only consider first 128 bits
 
 
 
