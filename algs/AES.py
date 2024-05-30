@@ -22,6 +22,7 @@ def gen_key_schedule(sym_key, key_bitlen) -> np.array:
     N = key_bitlen//32                    # number of 32-bit words in key
     R = 7 + N                             # number of round keys needed
     W = np.empty((4*R), dtype=np.uint32)  # the round keys partitioned into 32-bit words
+    round_keys = np.empty((R, 4), dtype=object)
     K = np.empty((N), dtype=np.uint32)    # 32-bit words of sym_key
     key_mask = 0xFFFFFFFF
     for k in range(0, N): K[len(K) - k - 1] = (sym_key >> (k * 32)) & key_mask
@@ -33,7 +34,9 @@ def gen_key_schedule(sym_key, key_bitlen) -> np.array:
         elif (i >= N and N > 6 and i%N == 4): W[i] = W[i-N] ^ sub_word(W[i-1])
         else:                                 W[i] = W[i-N] ^ W[i-1]
 
-    return W
+        round_keys[i//4][i%4] = W[i]
+
+    return round_keys
 
 
 
@@ -94,6 +97,8 @@ def add_round_key(state, round_key):
 # perform a single AES encryption round
 def encrypt_round(state, round_keys):
     return add_round_key(mix_columns(shift_rows(sub_bytes(state))), round_keys)
+
+
 
 
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
