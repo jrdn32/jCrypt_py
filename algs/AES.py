@@ -146,6 +146,29 @@ def encrypt_block(plaintext, sym_key, sym_key_bitlen):
     return ciphertext & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF # only consider first 128 bits
 
 
+# receives plaintext as an ASCII string
+def add_padding(plaintext, type):
+    if (type == "PKCS7"):
+        padding_bytes = 16 - len(plaintext) % 16
+        for i in range(padding_bytes):
+            plaintext += chr(padding_bytes)
+    # ANSI x.923
+    elif (type == "ANSI"):
+        padding_bytes = 16 - len(plaintext) % 16
+        for i in range(padding_bytes - 1):
+            plaintext += chr(0x0)
+        plaintext += chr(padding_bytes)
+    # ISO/IEC 7816
+    elif (type == "IEC"):
+        for i in range(16 - len(plaintext)%16):
+            if (i == 0): plaintext += chr(0x80)
+            else:        plaintext += chr(0x00)
+    else:
+        raise("padding type not supported")
+
+    return plaintext
+
+
 
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
                      [0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0],
