@@ -1,8 +1,8 @@
 import numpy as np
 
-# one byte left circular shift
-def rot_word(word):
-    return (word << 8) | (word >> 24) & 0xFFFFFFFF
+# circularly shifts bits in a given word by n_bits
+def rot_word(word, n_bits):
+    return (word << n_bits) | (word >> (32 - n_bits)) & 0xFFFFFFFF
 
 # apply AES sbox to each byte of the word
 def sub_word(word):
@@ -29,11 +29,71 @@ def gen_key_schedule(sym_key, key_bitlen) -> np.array:
     # apply the key expansion algorithm
     for i in range(0, 4*R):
         if (i < N):                           W[i] = K[i]
-        elif (i >= N and i%N == 0):           W[i] = W[i-N] ^ sub_word(rot_word(W[i-1])) ^ rcon[i//N - 1]
+        elif (i >= N and i%N == 0):           W[i] = W[i-N] ^ sub_word(rot_word(W[i-1], 8)) ^ rcon[i//N - 1]
         elif (i >= N and N > 6 and i%N == 4): W[i] = W[i-N] ^ sub_word(W[i-1])
         else:                                 W[i] = W[i-N] ^ W[i-1]
 
     return W
+
+
+
+"""
+The following functions implement the various transformation steps taken in a single AES
+encryption round. For encryption, the order of the transformations is: substitude bytes,
+shift rows, mix columns, and add round key. For decryption, the order of the transformations
+is: inverse shift rows, inverse substitude bytes, add round key, and inverse mix columns.
+
+The final round of both encryption and decryption do not include a mix columns transformation.
+"""
+
+def sub_bytes(state):
+    for i in range(4): state[i] = sub_word(state[i])
+
+    return state
+
+# row i of the state is circularly shifted left by i bytes
+# state is a 1-dimensional array where each element is a 32-bit word representing a state row
+def shift_rows(state):
+    for i in range(len(state)): state[i] = rot_word(state[i], i*8)
+
+    return state
+
+
+def mul_hex(x, y) -> np.uint32:
+    if (y == 0x01): return x
+    if (y == 0x02): return (x << 1) if not(x & 0x80) else (((x << 1) & 0xFF) ^ 0x1B)
+    if (y == 0x03): return x ^ mul_hex(x, 0x02)
+    # the following lines for y greater than 0x03 still need to be fixed and implemented:
+    # tmp = (x << 1) if not(x & 0x80) else (((x << 1) & 0xFF) ^ 0x1B)
+    # return (tmp ^ mul_hex(tmp, y//2)) if (y % 2) else mul_hex(tmp, y//2)
+
+
+def mix_columns(state):
+    mix_array = np.array([[0x02,0x03,0x01,0x01],
+                          [0x01,0x02,0x03,0x01],
+                          [0x01,0x01,0x02,0x03],
+                          [0x03,0x01,0x01,0x02]]
+                         )
+    mixed_state = np.zeros(shape=(4), dtype = np.uint32)
+
+    for i in range(4):
+        for j in range(4):
+            mixed_state[j] <<= 8
+            for k in range(4):
+                mixed_state[j] ^= mul_hex((state[k] >> ((3 - i)*8) & 0xFF), mix_array[j][k])
+
+    return mixed_state
+
+
+def add_round_key(state, round_key):
+    for i in range(4): state[i] ^= round_key[i]
+
+    return state
+
+
+# perform a single AES encryption round
+def encrypt_round(state, round_keys):
+    return add_round_key(mix_columns(shift_rows(sub_bytes(state))), round_keys)
 
 
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
