@@ -18,14 +18,12 @@ def sub_word(word):
     return sub1 + sub2 + sub3 + sub4
 
 # the AES key expansion algorithm
-def gen_key_schedule(sym_key, key_bitlen) -> np.array:
-    N = key_bitlen//32                    # number of 32-bit words in key
+def gen_key_schedule(K, K_bitlen) -> np.array:
+    N = K_bitlen//32                    # number of 32-bit words in key
     R = 7 + N                             # number of round keys needed
     W = np.empty((4*R), dtype=np.uint32)  # the round keys partitioned into 32-bit words
     round_keys = np.empty((R, 4), dtype=object)
-    K = np.empty((N), dtype=np.uint32)    # 32-bit words of sym_key
     key_mask = 0xFFFFFFFF
-    for k in range(0, N): K[len(K) - k - 1] = (sym_key >> (k * 32)) & key_mask
 
     # apply the key expansion algorithm
     for i in range(0, 4*R):
@@ -34,15 +32,7 @@ def gen_key_schedule(sym_key, key_bitlen) -> np.array:
         elif (i >= N and N > 6 and i%N == 4): W[i] = W[i-N] ^ sub_word(W[i-1])
         else:                                 W[i] = W[i-N] ^ W[i-1]
 
-        round_keys[i//4][i%4] = 0
-
-
-    for i in range(len(round_keys)):
-        key_mask = 0xFF000000
-        for j in range(4):
-            for k in range(4):
-                round_keys[i][k] ^= (W[i*4 + j] & key_mask) >> (j * 8)
-                W[i*4 + j] <<= 8
+        round_keys[i//4][i%4] = W[i]
 
     return round_keys
 
@@ -62,12 +52,21 @@ def sub_bytes(state):
 
     return state
 
-# row i of the state is circularly shifted left by i bytes
-# state is a 1-dimensional array where each element is a 32-bit word representing a state row
+# each row of bytes is left circularly shifted by 1 byte
+# state is a 1-dimensional array where each element is a 32-bit word representing a state column
 def shift_rows(state):
-    for i in range(len(state)): state[i] = rot_word(state[i], i*8)
+    mask = 0xFF000000
+    shifted_state = np.zeros(shape=(4), dtype=np.uint32)
 
-    return state
+    for i in range(len(state)):
+        shifted_state[0] ^= state[(i+0)%4] & mask
+        shifted_state[1] ^= state[(i+1)%4] & mask
+        shifted_state[2] ^= state[(i+2)%4] & mask
+        shifted_state[3] ^= state[(i+3)%4] & mask
+
+        mask >>= 8
+
+    return shifted_state
 
 
 def mul_hex(x, y) -> np.uint32:
@@ -79,20 +78,30 @@ def mul_hex(x, y) -> np.uint32:
     # return (tmp ^ mul_hex(tmp, y//2)) if (y % 2) else mul_hex(tmp, y//2)
 
 
-def mix_columns(state):
+def mix_single_column(column):
+    mixed_column = 0x00000000
+    mask = 0x000000FF
     mix_array = np.array([[0x02,0x03,0x01,0x01],
                           [0x01,0x02,0x03,0x01],
                           [0x01,0x01,0x02,0x03],
-                          [0x03,0x01,0x01,0x02]]
-                         )
-    mixed_state = np.zeros(shape=(4), dtype = np.uint32)
+                          [0x03,0x01,0x01,0x02]])
 
-    for i in range(4):
-        for j in range(4):
-            mixed_state[j] <<= 8
-            for k in range(4):
-                mixed_state[j] ^= mul_hex((state[k] >> ((3 - i)*8) & 0xFF), mix_array[j][k])
+    for row in range(4):
+        tmp = column
+        for col in range(4):
+            mixed_column ^= mul_hex(tmp & mask, mix_array[row][col])
+            tmp >>= 8
+        mixed_column <<= 8
 
+    return mixed_column
+
+
+def mix_columns(state):
+    mixed_state = np.empty(shape=(4), dtype=np.uint32)
+
+    for i in range(len(state)):
+        mixed_state[i] = mix_single_column(state[i])
+        
     return mixed_state
 
 
@@ -107,25 +116,16 @@ def encrypt_round(state, round_keys):
     return add_round_key(mix_columns(shift_rows(sub_bytes(state))), round_keys)
 
 
-# perform AES encryption for one block of plaintext
-def encrypt_block(plaintext, sym_key, sym_key_bitlen):
+# Perform AES encryption for one block of plaintext
+# The plaintext block is a 1-dimensional array of hex values, where
+# each row represents the state column.
+# K is an array where each row is a 32-bit word of the AES key
+def encrypt_block(plaintext, K, K_bitlen):
     # generate the round keys for each round
-    round_keys = gen_key_schedule(sym_key, sym_key_bitlen)
-
-    # transform plaintext into a state array
-    state = np.zeros((4), dtype=np.uint32)
-    state_mask = 0xFF
-    for i in range(4):
-        for j in reversed(range(4)):
-            state[j] ^= (plaintext & state_mask)
-            plaintext >>= 8
-        plaintext <<= 8
-        state_mask <<= 8
+    round_keys = gen_key_schedule(K, K_bitlen)
 
     # add initial round key
     state = add_round_key(state, round_keys[0])
-
-    
 
     # perform round encryptions
     for i in range(1, len(round_keys) - 1):
@@ -134,20 +134,14 @@ def encrypt_block(plaintext, sym_key, sym_key_bitlen):
     # perform last round encryption (no mix columns)
     state = add_round_key(shift_rows(sub_bytes(state)), round_keys[len(round_keys) - 1])
 
-    # transform the state matrix into the ciphertext
-    ciphertext = 0x100000000000000000000000000000000 # for some reason python truncates to 64-bit int without this
-    cipher_mask = 0xFF000000
-    for i in range(4):
-        for j in range(4):
-            ciphertext <<= 8
-            ciphertext ^= (state[j] & cipher_mask) >> ((3-i)*8)
-        cipher_mask >>= 8
-
-    return ciphertext & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF # only consider first 128 bits
+    # return the resulting ciphertext, stored in the current state
+    return state
 
 
 # receives plaintext as an ASCII string
-def add_padding(plaintext, type):
+def add_padding(plain, type):
+    plaintext = plain
+    
     if (type == "PKCS7"):
         padding_bytes = 16 - len(plaintext) % 16
         for i in range(padding_bytes):
@@ -167,7 +161,7 @@ def add_padding(plaintext, type):
         raise("padding type not supported")
 
     return plaintext
-
+    
 
 
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
