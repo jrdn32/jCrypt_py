@@ -1,0 +1,4 @@
+[project]
+name = "jCrypt"
+version = "0.1.0"
+description = "Cryptographic algorithm implementations in Python"
