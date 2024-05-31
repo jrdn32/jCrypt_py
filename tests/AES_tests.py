@@ -35,3 +35,11 @@ test = AES.mix_columns(state)
 for i in range(len(test)):
     print(hex(test[i]))
 print()
+
+
+# Test AES encryption function
+plaintext = "Two One Nine Two"
+key = "Thats my Kung Fu"
+
+test = AES.encrypt(plaintext, key)
+print(test)
