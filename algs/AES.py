@@ -125,7 +125,7 @@ def encrypt_block(plaintext, K, K_bitlen):
     round_keys = gen_key_schedule(K, K_bitlen)
 
     # add initial round key
-    state = add_round_key(state, round_keys[0])
+    state = add_round_key(plaintext, round_keys[0])
 
     # perform round encryptions
     for i in range(1, len(round_keys) - 1):
@@ -139,7 +139,7 @@ def encrypt_block(plaintext, K, K_bitlen):
 
 
 # receives plaintext as an ASCII string
-def add_padding(plain, type):
+def add_padding(plain, type="IEC"):
     plaintext = plain
     
     if (type == "PKCS7"):
@@ -161,7 +161,59 @@ def add_padding(plain, type):
         raise("padding type not supported")
 
     return plaintext
+
+
+# Converts a string of ASCII characters into a state-like array
+# of 32-bit hexadecimal words
+def convert_to_hex_words(text):
+    words = np.zeros(shape=(len(text)//4), dtype=np.uint32)
+
+    for i in range(len(words)):
+        for j in range(4):
+            words[i] <<= 8
+            words[i] ^= ord(text[i*4 + j])
+
+    return words
+
+
+def convert_hex_words_to_ASCII(words):
+    text = ""
+    tmp = np.copy(words)
+
+    for i in range(len(words)):
+        for j in range(4):
+            text += chr((tmp[i] & 0xFF000000) >> 24)
+            tmp[i] <<= 8
+
+    return text
     
+
+# Perform AES encryption on a given string
+# Both plaintext and sym_key should be ASCII strings
+def encrypt(plaintext, sym_key, encrypt_method="ECB", pad_method="IEC"):
+    # Add padding to plaintext
+    padded = add_padding(plaintext, pad_method)
+
+    # Convert plaintext to 32-bit words
+    plain_words = convert_to_hex_words(padded)
+
+    # Convert key to 32-bit words
+    K = convert_to_hex_words(sym_key)
+
+    # Begin encryption
+    if (encrypt_method == "ECB"):
+        cipher_words = np.array([], dtype=np.uint32)
+
+        # Encrypt each plaintext block
+        for i in range(len(plain_words)//4):
+            cipher_words = np.append(cipher_words, encrypt_block
+                                (plain_words[i*4:(i+1)*4],
+                                 K, len(K)*32))
+
+    # Convert cipher_words to ASCII ciphertext
+    ciphertext = convert_hex_words_to_ASCII(cipher_words)
+
+    return ciphertext
 
 
 sbox     = np.array([[0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76],
