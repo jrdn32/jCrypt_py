@@ -88,10 +88,10 @@ def mix_single_column(column):
 
     for row in range(4):
         tmp = column
-        for col in range(4):
-            mixed_column ^= mul_hex(tmp & mask, mix_array[row][col])
-            tmp >>= 8
         mixed_column <<= 8
+        for col in range(4):
+            mixed_column ^= mul_hex(tmp & mask, mix_array[row][3 - col])
+            tmp >>= 8
 
     return mixed_column
 
