@@ -120,10 +120,7 @@ def encrypt_round(state, round_keys):
 # The plaintext block is a 1-dimensional array of hex values, where
 # each row represents the state column.
 # K is an array where each row is a 32-bit word of the AES key
-def encrypt_block(plaintext, K, K_bitlen):
-    # generate the round keys for each round
-    round_keys = gen_key_schedule(K, K_bitlen)
-
+def encrypt_block(plaintext, round_keys):
     # add initial round key
     state = add_round_key(plaintext, round_keys[0])
 
@@ -191,12 +188,11 @@ def convert_hex_words_to_ASCII(words):
 # Performs AES Electronic Code Book (ECB) encryption
 def encrypt_ECB(plain_words, K):
     cipher_words = np.array([], dtype=np.uint32) # Store the resulting encrypted information in 32-bit words
+    round_keys = gen_key_schedule(K, len(K)*32)
 
     # Encrypt each plaintext block
     for i in range(len(plain_words)//4):
-        cipher_words = np.append(cipher_words, encrypt_block
-                                 (plain_words[i*4:(i+1)*4],
-                                  K, len(K)*32))
+        cipher_words = np.append(cipher_words, encrypt_block(plain_words[i*4:(i+1)*4], round_keys))
 
     return cipher_words
 
@@ -205,6 +201,7 @@ def encrypt_CBC(plain_words, K, IV):
     if (IV == None): raise("Please supply an Initialisation Vector (IV) for CBC encryption mode")
     
     cipher_words = np.array([], dtype=np.uint32) # Store the resulting encrypted information in 32-bit words
+    round_keys = gen_key_schedule(K, len(K)*32)
     
     IV_words = convert_to_hex_words(IV)
     block_in = np.copy(plain_words[0:4])
@@ -215,14 +212,14 @@ def encrypt_CBC(plain_words, K, IV):
             
     # Perform CBC encryption
     for i in range(0, len(plain_words)//4 - 1):
-        cipher_words = np.append(cipher_words, encrypt_block(block_in, K, len(K)*32))
+        cipher_words = np.append(cipher_words, encrypt_block(block_in, round_keys))
 
         # XOR previous encryption block's output with the input plaintext block
         for j in range(4):
             block_in[j] = plain_words[(i+1)*4 + j] ^ cipher_words[i*4 + j]
 
     # Encrypt final block
-    cipher_words = np.append(cipher_words, encrypt_block(block_in, K, len(K)*32))
+    cipher_words = np.append(cipher_words, encrypt_block(block_in, round_keys))
 
     return cipher_words
         
