@@ -186,11 +186,51 @@ def convert_hex_words_to_ASCII(words):
             tmp[i] <<= 8
 
     return text
+
+
+# Performs AES Electronic Code Book (ECB) encryption
+def encrypt_ECB(plain_words, K):
+    cipher_words = np.array([], dtype=np.uint32) # Store the resulting encrypted information in 32-bit words
+
+    # Encrypt each plaintext block
+    for i in range(len(plain_words)//4):
+        cipher_words = np.append(cipher_words, encrypt_block
+                                 (plain_words[i*4:(i+1)*4],
+                                  K, len(K)*32))
+
+    return cipher_words
+
+
+def encrypt_CBC(plain_words, K, IV):
+    if (IV == None): raise("Please supply an Initialisation Vector (IV) for CBC encryption mode")
+    
+    cipher_words = np.array([], dtype=np.uint32) # Store the resulting encrypted information in 32-bit words
+    
+    IV_words = convert_to_hex_words(IV)
+    block_in = np.copy(plain_words[0:4])
+
+    # XOR IV with plaintext
+    for i in range(len(block_in)):
+        block_in[i] ^= IV_words[i]
+            
+    # Perform CBC encryption
+    for i in range(0, len(plain_words)//4 - 1):
+        cipher_words = np.append(cipher_words, encrypt_block(block_in, K, len(K)*32))
+
+        # XOR previous encryption block's output with the input plaintext block
+        for j in range(4):
+            block_in[j] = plain_words[(i+1)*4 + j] ^ cipher_words[i*4 + j]
+
+    # Encrypt final block
+    cipher_words = np.append(cipher_words, encrypt_block(block_in, K, len(K)*32))
+
+    return cipher_words
+        
     
 
 # Perform AES encryption on a given string
 # Both plaintext and sym_key should be ASCII strings
-def encrypt(plaintext, sym_key, encrypt_method="ECB", pad_method="IEC"):
+def encrypt(plaintext, sym_key, encrypt_method="ECB", IV = None, pad_method="IEC"):
     # Add padding to plaintext
     padded = add_padding(plaintext, pad_method)
 
@@ -202,13 +242,10 @@ def encrypt(plaintext, sym_key, encrypt_method="ECB", pad_method="IEC"):
 
     # Begin encryption
     if (encrypt_method == "ECB"):
-        cipher_words = np.array([], dtype=np.uint32)
+        cipher_words = encrypt_ECB(plain_words, K)
 
-        # Encrypt each plaintext block
-        for i in range(len(plain_words)//4):
-            cipher_words = np.append(cipher_words, encrypt_block
-                                (plain_words[i*4:(i+1)*4],
-                                 K, len(K)*32))
+    elif (encrypt_method == "CBC"):
+        cipher_words = encrypt_CBC(plain_words, K, IV)
 
     # Convert cipher_words to ASCII ciphertext
     ciphertext = convert_hex_words_to_ASCII(cipher_words)
