@@ -40,6 +40,8 @@ print()
 # Test AES encryption function
 plaintext = "Two One Nine Two"
 key = "Thats my Kung Fu"
+IV = "asthget29eh??82v"
 
-test = AES.encrypt(plaintext, key)
+print(AES.encrypt(plaintext, key))
+test = AES.encrypt(plaintext, key, IV=IV, encrypt_method="CBC")
 print(test)
